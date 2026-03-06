@@ -1,0 +1,4 @@
+curl_cffi
+fake_useragent
+beautifulsoup4
+lxml

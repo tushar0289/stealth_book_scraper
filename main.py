@@ -1,12 +1,14 @@
 from curl_cffi import requests
 from fake_useragent import UserAgent
 from bs4 import BeautifulSoup
-import json, time, random, re
+import json, time, random, re, urllib.parse
 from antiban_code import get_safe_proxies # Custom module for some useful functions
 
 
 ua = UserAgent()
 books_detail = []
+base_url = "https://books.toscrape.com/"
+end_point = "catalogue/category/books/romance_8/index.html"
 
 
 def fetch_with_retry(url, session, retries=3):
@@ -38,6 +40,11 @@ def fetch_with_retry(url, session, retries=3):
             }
 
             session.proxies = proxy
+            try:
+                session.get(base_url, impersonate="chrome110", timeout=(6, 15))
+                print("Session re-primed on new proxy.")
+            except Exception as e:
+                print(f"Re-priming failed on this proxy {(e)}. Trying again.")
 
         else:
             print("No proxies left to try.")
@@ -54,9 +61,7 @@ test_proxies = load_proxies("proxies.txt")
 working_proxies = get_safe_proxies(test_proxies)
 
 
-base_url = "https://books.toscrape.com/"
 session = requests.Session()
-end_point = "catalogue/category/books/romance_8/index.html"
 
 session.headers.update(
     {
@@ -81,12 +86,18 @@ proxy = {
 }
 
 session.proxies = proxy
-
-session.get(base_url, impersonate="chrome110")
 url = base_url + end_point
-r = fetch_with_retry(url, session)
+session.get(base_url, impersonate="chrome110", timeout=(6, 15))
+page_count = 1
 
-if r:
+
+while True:
+    r = fetch_with_retry(url, session)
+
+    if not r:
+        print("Failed to reach the target after all retries. Use Other proxies")
+        break
+
     soup = BeautifulSoup(r.content, "lxml")
     books = soup.select("article.product_pod")
 
@@ -108,9 +119,20 @@ if r:
 
         books_detail.append(single_book)
 
-    """for book in books_detail:
-        print(book)"""
-    print(json.dumps(books_detail, indent=4))
+    next_tag = soup.select_one("li.next a")
 
-else:
-    print("Failed to reach the target after all retries. Use Other proxies")
+    with open("books.json", 'w') as wf:
+        json.dump(books_detail, wf, indent=4)
+
+    print(f"Page {page_count} parsed")
+
+    if next_tag:
+        next_page_url = next_tag.get("href")
+        url = urllib.parse.urljoin(url, next_page_url)
+        time.sleep(random.uniform(2, 4))
+        page_count += 1
+
+    else:
+        print("No more pages found!")
+        break
+

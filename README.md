@@ -9,6 +9,8 @@ A lightweight, stealth-oriented python scraper designed to extract data from [Bo
 
 - **JSON Output:** Formats raw HTML data into clean, structured JSON structure.
 
+- **Pagination Handling:** Handles pagination, retries with different proxy if fails.
+
 
 ### Project Workflow
 

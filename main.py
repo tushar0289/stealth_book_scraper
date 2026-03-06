@@ -7,11 +7,9 @@ from antiban_code import get_safe_proxies # Custom module for some useful functi
 
 ua = UserAgent()
 books_detail = []
-base_url = "https://books.toscrape.com/"
-end_point = "catalogue/category/books/romance_8/index.html"
 
 
-def fetch_with_retry(url, session, retries=3):
+def fetch_with_retry(url, session, base_url, retries=3):
     delay = 5
     for i in range(retries):
         try:
@@ -41,7 +39,7 @@ def fetch_with_retry(url, session, retries=3):
 
             session.proxies = proxy
             try:
-                session.get(base_url, impersonate="chrome110", timeout=(6, 15))
+                session.get(url, impersonate="chrome110", timeout=(6, 15))
                 print("Session re-primed on new proxy.")
             except Exception as e:
                 print(f"Re-priming failed on this proxy {(e)}. Trying again.")
@@ -57,11 +55,24 @@ def load_proxies(filename):
         return [line.strip() for line in rf if line.strip()]
 
 
+def get_upc(index_url, book_rel_link, session):
+    book_url = urllib.parse.urljoin(index_url, book_rel_link)
+    r = fetch_with_retry(book_url, session, index_url)
+
+    soup = BeautifulSoup(r.content, "lxml")
+    table = soup.find("th", string="UPC")
+    if table:
+        return table.find_next_sibling("td").text.strip()
+    else:
+        return "N/A"
+
+
+
+session = requests.Session()
 test_proxies = load_proxies("proxies.txt") 
 working_proxies = get_safe_proxies(test_proxies)
 
 
-session = requests.Session()
 
 session.headers.update(
     {
@@ -85,14 +96,17 @@ proxy = {
     "https": f"http://{p_addr}"
 }
 
+base_url = "https://books.toscrape.com/"
+end_point = "catalogue/category/books/romance_8/index.html"
+index_url = base_url + end_point
+
 session.proxies = proxy
-url = base_url + end_point
 session.get(base_url, impersonate="chrome110", timeout=(6, 15))
 page_count = 1
 
 
 while True:
-    r = fetch_with_retry(url, session)
+    r = fetch_with_retry(index_url, session, base_url)
 
     if not r:
         print("Failed to reach the target after all retries. Use Other proxies")
@@ -110,11 +124,14 @@ while True:
         else:
             price = 0.0
         availability = book.select_one("p.instock").text.strip()
+        book_rel_link = book.select_one("div.image_container a").get("href")
+        upc = get_upc(index_url, book_rel_link, session)
 
         single_book = {
             "title": title,
             "price": price,
-            "availability": availability
+            "availability": availability,
+            "UPC": upc
         }
 
         books_detail.append(single_book)
@@ -128,11 +145,10 @@ while True:
 
     if next_tag:
         next_page_url = next_tag.get("href")
-        url = urllib.parse.urljoin(url, next_page_url)
+        index_url = urllib.parse.urljoin(index_url, next_page_url)
         time.sleep(random.uniform(2, 4))
         page_count += 1
 
     else:
         print("No more pages found!")
         break
-
